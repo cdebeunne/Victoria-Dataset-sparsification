@@ -49,12 +49,13 @@ map_node = containers.Map(node_indices, node_indices);
 % place in matrix -> node indice
 map_index = containers.Map(node_indices, node_indices);
 
+% reorder of the Information matrix 
 for k = 1:length(nodes_to_keep)
     % I copy ?
     i = map_node(nodes_to_keep(k));
     I((k-1)*3+1:k*3, :) = I((i-1)*3+1:i*3, :);
     I(:,(k-1)*3+1:k*3) = I(:, (i-1)*3+1:i*3);
-    map_node(k) = i;
+    map_index(k) = i;
     map_node(i) = k;
 end
 
@@ -69,18 +70,5 @@ I_marg = I_aa - I_ab * inv(I_bb) * I_ab';
 image = I_marg > 0;
 imagesc(image);
 
-%% Compute KLD divergence between pose graphs
+%% Marginalize over the elimination clique
 
-nodePairs = edgeNodePairs(pg);
-KLD = 0;
-for i=1:length(nodePairs)
-    edgeij = findEdgeID(pg,nodePairs(i,:));
-    [mu, Lambda] = edgeConstraints(pg, edgeij);
-    Lambda = vecToMat(Lambda);
-    [mu_tilde, Lambda_tilde] = edgeConstraints(updatedPG, edgeij);
-    Lambda_tilde = vecToMat(Lambda_tilde);
-    KLD = KLD + 0.5*(trace(Lambda_tilde*inv(Lambda))...
-                    - log(norm(Lambda_tilde*inv(Lambda)))...
-                    + (mu - mu_tilde)*inv(Lambda_tilde)*(mu - mu_tilde)' ...
-                    - length(mu));
-end
