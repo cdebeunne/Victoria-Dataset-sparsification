@@ -12,14 +12,34 @@ title('Updated Pose Graph');
 
 %% Select nodes to keep and to remove 
 
-n_remove = 400;
-n_keep = updatedPG.NumNodes - n_remove;
-
 node_indices = (1:updatedPG.NumNodes);
-nodes_to_remove = randsample(node_indices, 400);
-nodes_to_keep = setdiff(node_indices, node_to_remove);
+nodes_to_remove = [];
+nodes_to_keep = [];
 
-%% Marginalization
+% node pairs that close loopsss
+lc_node_pairs = updatedPG.edgeNodePairs(updatedPG.LoopClosureEdgeIDs);
+
+p = 0.3; % probability of removing a node
+for i=1:updatedPG.NumNodes
+
+    % we do not remove nodes with lc
+    if sum(lc_node_pairs == i) > 0
+        nodes_to_keep = [nodes_to_keep i];
+        continue;
+    end
+
+    if(rand < p)
+        nodes_to_remove = [nodes_to_remove i];
+    else
+        nodes_to_keep = [nodes_to_keep i];
+    end
+
+end
+
+n_remove = length(nodes_to_remove);
+n_keep = length(nodes_to_keep);
+
+%% Full Marginalization
 
 I = computeMatInfJac(updatedPG);
 
