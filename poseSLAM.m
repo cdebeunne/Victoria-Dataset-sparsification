@@ -19,7 +19,7 @@ nodes_to_keep = [];
 % node pairs that close loopsss
 lc_node_pairs = updatedPG.edgeNodePairs(updatedPG.LoopClosureEdgeIDs);
 
-p = 0.3; % probability of removing a node
+p = 0.1; % probability of removing a node
 for i=1:updatedPG.NumNodes
 
     % we do not remove nodes with lc
@@ -41,7 +41,7 @@ n_keep = length(nodes_to_keep);
 
 %% Full Marginalization
 
-I = computeMatInfJac(updatedPG);
+I = computeMatInfJac(updatedPG, node_indices);
 
 % node indice -> place in matrix
 map_node = containers.Map(node_indices, node_indices);
@@ -71,4 +71,45 @@ image = I_marg > 0;
 imagesc(image);
 
 %% Marginalize over the elimination clique
+
+% get the global markov blanket 
+markov_blanket_remove = [];
+for k = 1:n_remove
+    markov_blanket_remove = [markov_blanket_remove,...
+                           getMarkovBlanket(updatedPG, nodes_to_remove(k))];
+end
+markov_blanket_remove = unique(markov_blanket_remove);
+n_mb = length(markov_blanket_remove);
+
+% here the ordering is the same as markov_blanket_keep
+I_t = computeMatInfJac(updatedPG, markov_blanket_remove);
+
+% build the maps
+map_index_t = containers.Map(1:n_mb, markov_blanket_remove);
+map_node_t = containers.Map(markov_blanket_remove, 1:n_mb);
+
+% select the nodes to keep in the markov blanket
+nodes_to_keep_t = nodes_to_keep(ismember(nodes_to_keep,markov_blanket_remove));
+n_keep_t = length(nodes_to_keep_t);
+
+% reorder of the Information matrix 
+for k = 1:n_keep_t
+    % I copy ?
+    i = map_node_t(nodes_to_keep_t(k));
+    I_t((k-1)*3+1:k*3, :) = I_t((i-1)*3+1:i*3, :);
+    I_t(:,(k-1)*3+1:k*3) = I_t(:, (i-1)*3+1:i*3);
+    map_index_t(k) = i;
+    map_node_t(i) = k;
+end
+
+% Compute the marginalized Information matrix with Schur Complement
+I_aa = I_t(1:3*n_keep_t, 1:3*n_keep_t);
+I_bb = I_t(3*n_keep_t+1:3*n_mb, 3*n_keep_t+1:3*n_mb);
+I_ab = I_t(1:3*n_keep_t,3*n_keep_t+1:3*n_mb);
+
+I_marg = I_aa - I_ab * inv(I_bb) * I_ab';
+
+% plot it
+image = I_marg > 0;
+imagesc(image);
 
