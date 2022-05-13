@@ -26,17 +26,15 @@ title('toy graph');
 
 %% Choose the node we want to remove and bookeping
 
-node_to_remove = 2;
+nodes_to_remove = 2;
 nodes_to_keep = [1 3 4 5];
 
 %% Marginalization on the elimination clique
 
 % get the global markov blanket 
 markov_blanket_remove = [];
-for k = 1:n_remove
-    markov_blanket_remove = [markov_blanket_remove,...
-                           getMarkovBlanket(updated_toy_pg, nodes_to_remove(k))];
-end
+markov_blanket_remove = [markov_blanket_remove,...
+                       getMarkovBlanket(updated_toy_pg, node_to_remove)];
 markov_blanket_remove = unique(markov_blanket_remove);
 n_mb = length(markov_blanket_remove);
 
@@ -88,5 +86,33 @@ I_marg = I_aa - I_ab * pinv(I_bb) * I_ab';
 % plot it
 image = I_marg > 0;
 imagesc(image);
+
+%% Compute Chow Liu Tree
+
+n = length(nodes_to_keep_t);
+map_pair_MI = [];
+
+% compute every mutual information pair
+for k=length(nodes_to_keep_t):-1:1
+    for j=1:k-1
+        map_pair_MI= [map_pair_MI; [k j computeMutualInfo(I_marg, k, j)]];
+    end
+end
+
+% sort pairs wrt MI
+map_pair_MI_sorted = sortrows(map_pair_MI, 3, 'descend');
+
+% build tree
+nodes_in_tree = [];
+edges_in_tree = [];
+
+for k=1:length(map_pair_MI_sorted)
+    pair = map_pair_MI_sorted(k, 1:2);
+    if (~(ismember(pair(1), nodes_in_tree) && ismember(pair(2), nodes_in_tree)))
+        edges_in_tree = [edges_in_tree; pair];
+        nodes_in_tree = [nodes_in_tree pair];
+    end
+end
+
 
 
