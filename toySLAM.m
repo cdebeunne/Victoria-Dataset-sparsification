@@ -10,6 +10,7 @@
 toy_pg = poseGraph;
 measInf = [1.5 0 0 4 0 400];
 
+addLink()
 addRelativePose(toy_pg, [1, 0, pi/4], measInf, 1, 2);
 addRelativePose(toy_pg, [sqrt(0.5), -sqrt(0.5), -pi/4], measInf, 2, 3);
 addRelativePose(toy_pg, [sqrt(2), 0, -pi/4], measInf, 2, 4);
@@ -26,7 +27,7 @@ title('toy graph');
 
 %% Choose the node we want to remove and bookeping
 
-nodes_to_remove = 2;
+node_to_remove = 2;
 nodes_to_keep = [1 3 4 5];
 
 %% Marginalization on the elimination clique
@@ -38,7 +39,7 @@ markov_blanket_remove = [markov_blanket_remove,...
 markov_blanket_remove = unique(markov_blanket_remove);
 n_mb = length(markov_blanket_remove);
 
-% here the ordering is the same as markov_blanket_keep
+% compute the information matrix on the elimination clique
 I_t = computeMatInfJac(updated_toy_pg, markov_blanket_remove);
 
 % build the maps
@@ -85,14 +86,18 @@ I_marg = I_aa - I_ab * pinv(I_bb) * I_ab';
 
 % plot it
 image = I_marg > 0;
+title("Marginalized, Dense Information matrix")
 imagesc(image);
 
 %% Compute Chow Liu Tree
 
 n = length(nodes_to_keep_t);
+
+% an array with each row like [i, j, MI(x_i, x_j)]
 map_pair_MI = [];
 
 % compute every mutual information pair
+% we work in the order [keep, remove]
 for k=length(nodes_to_keep_t):-1:1
     for j=1:k-1
         map_pair_MI= [map_pair_MI; [k j computeMutualInfo(I_marg, k, j)]];
@@ -102,17 +107,89 @@ end
 % sort pairs wrt MI
 map_pair_MI_sorted = sortrows(map_pair_MI, 3, 'descend');
 
-% build tree
-nodes_in_tree = [];
+% build tree using Chow & Liu algorithm (1968)
 edges_in_tree = [];
+nodes_in_tree = [];
 
 for k=1:length(map_pair_MI_sorted)
     pair = map_pair_MI_sorted(k, 1:2);
+
+    % if the next node doesn't make a loop, we had it in the tree
     if (~(ismember(pair(1), nodes_in_tree) && ismember(pair(2), nodes_in_tree)))
         edges_in_tree = [edges_in_tree; pair];
         nodes_in_tree = [nodes_in_tree pair];
     end
+
 end
 
+%% Factor recovery in closed form
 
 
+% % first, let's set the correct node indices in CLT
+% for k = 1:length(edges_in_tree)
+%     edges_in_tree(k,:) = [map_index_t(edges_in_tree(k,1)) ...
+%                           map_index_t(edges_in_tree(k,2))];
+% end
+% 
+% % then let's reorder the information matrix on the elimination clique
+% for k = 1:length(I_marg)
+%     % I copy ?
+%     i = map_index_t(k);
+% 
+%     % exchange rows
+%     rows_k = I_marg((k-1)*3+1:k*3, :);
+%     rows_i = I_marg((i-1)*3+1:i*3, :);
+%     I_marg((k-1)*3+1:k*3, :) = rows_i;
+%     I_marg((i-1)*3+1:i*3, :) = rows_k;
+% 
+%     % exchange columns
+%     cols_k = I_marg(:,(k-1)*3+1:k*3);
+%     cols_i = I_marg(:, (i-1)*3+1:i*3);
+%     I_marg(:,(k-1)*3+1:k*3) = cols_i;
+%     I_marg(:, (i-1)*3+1:i*3) = cols_k;
+% 
+%     % update maps
+%     map_index_t(i) = k;
+%     map_index_t(k) = i;
+%     map_node_t(k) = i;
+%     map_node_t(i) = k;
+% end
+
+% Now let's recover the factors information matrix
+Sigma = inv(I_marg);
+
+% We build Omega and J
+J = zeros(size(I_marg));
+Omega = zeros(size(I_marg));
+
+for k = 1:length(edges_in_tree)
+
+    node_pair = edges_in_tree(k,:);
+    i = node_pair(1);
+    j = node_pair(2);
+
+    % Retrieve node estimates
+    meas_i = nodeEstimates(updated_toy_pg, map_index_t(i));
+    ti = meas_i(1:2)';
+    Ri = [cos(meas_i(3)) -sin(meas_i(3));
+        sin(meas_i(3)) cos(meas_i(3))];
+
+    meas_j = nodeEstimates(updated_toy_pg, map_index_t(j));
+    tj = meas_j(1:2)';
+    Rj = [cos(meas_j(3)) -sin(meas_j(3));
+        sin(meas_j(3)) cos(meas_j(3))];
+    Rperp = [0 1; -1 0];
+
+    % Compute 2D jacobians
+    % Formula from 2D poseSLAM in GTSAM Dellaert.
+    J_k = zeros(3, length(I_marg));
+    J_k(:, (i-1)*3+1:i*3) = [Rj'*Ri Rperp*Rj'*(ti-tj);
+                                    0 0 1];
+    J_k(:, (j-1)*3+1:j*3) = eye(3,3);
+
+    Omega_k = inv(J_k * Sigma * J_k');
+
+    Omega((k-1)*3+1:k*3, (k-1)*3+1:k*3) = Omega_k;
+    J((k-1)*3+1:k*3, :) = J_k;
+
+end 
