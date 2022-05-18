@@ -5,12 +5,11 @@
 %                      > x4 ---> x5
 %                    /    ^
 %                   /     |  
-%       x1 ---> x2 --->  x3
+%    |--x1 ---> x2 --->  x3
 
 toy_pg = poseGraph;
 measInf = [1.5 0 0 4 0 400];
 
-addLink()
 addRelativePose(toy_pg, [1, 0, pi/4], measInf, 1, 2);
 addRelativePose(toy_pg, [sqrt(0.5), -sqrt(0.5), -pi/4], measInf, 2, 3);
 addRelativePose(toy_pg, [sqrt(2), 0, -pi/4], measInf, 2, 4);
@@ -41,6 +40,12 @@ n_mb = length(markov_blanket_remove);
 
 % compute the information matrix on the elimination clique
 I_t = computeMatInfJac(updated_toy_pg, markov_blanket_remove);
+
+% we need to add a unary factor so that I_t is full rank
+H = zeros(3, 3*n_mb);
+H(1:3, 1:3) = eye(3,3);
+I = 100 * eye(3,3);
+I_t = I_t + H' * I * H;
 
 % build the maps
 map_index_t = containers.Map(1:n_mb, markov_blanket_remove);
@@ -85,9 +90,8 @@ I_ab = I_t(1:3*n_keep_t,3*n_keep_t+1:3*n_mb);
 I_marg = I_aa - I_ab * pinv(I_bb) * I_ab';
 
 % plot it
-image = I_marg > 0;
-title("Marginalized, Dense Information matrix")
-imagesc(image);
+imagesc(I_marg > 1e-3);
+title("Marginalized, Dense Information matrix on elimination clique")
 
 %% Compute Chow Liu Tree
 
@@ -100,7 +104,7 @@ map_pair_MI = [];
 % we work in the order [keep, remove]
 for k=length(nodes_to_keep_t):-1:1
     for j=1:k-1
-        map_pair_MI= [map_pair_MI; [k j computeMutualInfo(I_marg, k, j)]];
+        map_pair_MI= [map_pair_MI; [j k computeMutualInfo(I_marg, j, k)]];
     end
 end
 
@@ -124,43 +128,13 @@ end
 
 %% Factor recovery in closed form
 
-
-% % first, let's set the correct node indices in CLT
-% for k = 1:length(edges_in_tree)
-%     edges_in_tree(k,:) = [map_index_t(edges_in_tree(k,1)) ...
-%                           map_index_t(edges_in_tree(k,2))];
-% end
-% 
-% % then let's reorder the information matrix on the elimination clique
-% for k = 1:length(I_marg)
-%     % I copy ?
-%     i = map_index_t(k);
-% 
-%     % exchange rows
-%     rows_k = I_marg((k-1)*3+1:k*3, :);
-%     rows_i = I_marg((i-1)*3+1:i*3, :);
-%     I_marg((k-1)*3+1:k*3, :) = rows_i;
-%     I_marg((i-1)*3+1:i*3, :) = rows_k;
-% 
-%     % exchange columns
-%     cols_k = I_marg(:,(k-1)*3+1:k*3);
-%     cols_i = I_marg(:, (i-1)*3+1:i*3);
-%     I_marg(:,(k-1)*3+1:k*3) = cols_i;
-%     I_marg(:, (i-1)*3+1:i*3) = cols_k;
-% 
-%     % update maps
-%     map_index_t(i) = k;
-%     map_index_t(k) = i;
-%     map_node_t(k) = i;
-%     map_node_t(i) = k;
-% end
-
-% Now let's recover the factors information matrix
+% First let's compute the covariance matrix
 Sigma = inv(I_marg);
 
-% We build Omega and J
+% We build Omega and J and retrieve measurements
 J = zeros(size(I_marg));
 Omega = zeros(size(I_marg));
+z = zeros(3, length(edges_in_tree));
 
 for k = 1:length(edges_in_tree)
 
@@ -180,10 +154,15 @@ for k = 1:length(edges_in_tree)
         sin(meas_j(3)) cos(meas_j(3))];
     Rperp = [0 1; -1 0];
 
+    delta_t = Ri' * (tj - ti);
+    delta_R = (Ri' * Rj);
+    delta_theta = acos(delta_R(1,1));
+    z(:, k) = [delta_t', delta_theta]';
+
     % Compute 2D jacobians
     % Formula from 2D poseSLAM in GTSAM Dellaert.
     J_k = zeros(3, length(I_marg));
-    J_k(:, (i-1)*3+1:i*3) = [Rj'*Ri Rperp*Rj'*(ti-tj);
+    J_k(:, (i-1)*3+1:i*3) = -[Rj'*Ri Rperp*Rj'*(ti-tj);
                                     0 0 1];
     J_k(:, (j-1)*3+1:j*3) = eye(3,3);
 
@@ -193,3 +172,44 @@ for k = 1:length(edges_in_tree)
     J((k-1)*3+1:k*3, :) = J_k;
 
 end 
+
+% We need to add an absolute pose factor so that J is invertible and we can
+% use the closed form solution
+
+J_k = zeros(3, length(I_marg));
+J_k(1:3, 1:3) = eye(3,3);
+k = 3;
+
+Omega_k = inv(J_k * Sigma * J_k');
+Omega((k-1)*3+1:k*3, (k-1)*3+1:k*3) = Omega_k;
+J((k-1)*3+1:k*3, :) = J_k;
+
+% Now we can compute the information matrix of the sparsified elimination
+% clique
+
+I_spars = J' * Omega * J;
+
+% plot it
+figure;
+imagesc(I_spars > 0);
+title("Sparsified Information matrix on elimination clique");
+
+%% Build a new pose graph 
+
+sparse_pg = poseGraph;
+
+% we add the edges from the sparsified markov blanket
+for k = length(edges_in_tree):-1:1
+    addRelativePose(sparse_pg, z(:,k), mat_to_vec(Omega((k-1)*3+1:k*3, (k-1)*3+1:k*3)),...
+        edges_in_tree(k,1), edges_in_tree(k,2));
+end
+addRelativePose(sparse_pg, [1, 0, 0], measInf, 3, 4);
+
+figure
+show(sparse_pg,'IDs','off');
+title('sparsified pose graph');
+
+%% Compute KLD between sparse and dense distribution
+
+prod = I_spars * inv(I_marg);
+D_kl = 0.5 * ( trace(prod) - log(det(prod)) - length(I_spars))
