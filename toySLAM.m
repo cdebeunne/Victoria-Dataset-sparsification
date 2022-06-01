@@ -5,7 +5,7 @@
 %                      > x4 ---> x5
 %                    /    ^
 %                   /     |  
-%    |--x1 ---> x2 --->  x3
+%        x1 ---> x2 --->  x3
 
 toy_pg = poseGraph;
 measInf = [1.5 0 0 4 0 400];
@@ -40,52 +40,30 @@ n_mb = length(markov_blanket_remove);
 
 % compute the information matrix on the elimination clique
 I_t = computeMatInfJac(updated_toy_pg, markov_blanket_remove);
-
-% we need to add a unary factor so that I_t is full rank
-H = zeros(3, 3*n_mb);
-H(1:3, 1:3) = eye(3,3);
-I = 100 * eye(3,3);
-I_t = I_t + H' * I * H;
-
-% build the maps
-map_index_t = containers.Map(1:n_mb, markov_blanket_remove);
-map_node_t = containers.Map(markov_blanket_remove, 1:n_mb);
+I_t_copy = I_t;
 
 % select the nodes to keep in the markov blanket
 nodes_to_keep_t = nodes_to_keep(ismember(nodes_to_keep,markov_blanket_remove));
 n_keep_t = length(nodes_to_keep_t);
 
-% reorder of the Information matrix in this way: 
-% [  keep,keep    keep,remove ;
-% [ remove,keep  remove,remove]
-
-for k = 1:n_keep_t
-    % I copy ?
-    i = map_node_t(nodes_to_keep_t(k));
-
-    % exchange rows
-    rows_k = I_t((k-1)*3+1:k*3, :);
-    rows_i = I_t((i-1)*3+1:i*3, :);
-    I_t((k-1)*3+1:k*3, :) = rows_i;
-    I_t((i-1)*3+1:i*3, :) = rows_k;
-
-    % exchange columns
-    cols_k = I_t(:,(k-1)*3+1:k*3);
-    cols_i = I_t(:, (i-1)*3+1:i*3);
-    I_t(:,(k-1)*3+1:k*3) = cols_i;
-    I_t(:, (i-1)*3+1:i*3) = cols_k;
-
-    % update maps
-    map_index_t(k) = i;
-    map_index_t(i) = k;
-    map_node_t(i) = k;
-    map_node_t(k) = i;
+% We select the rows and the columns to keep and to remove
+rows_to_keep = [];
+rows_to_remove = [];
+for k = 1:length(nodes_to_keep_t)
+    j = nodes_to_keep_t(k);
+    rows_to_keep = [rows_to_keep, (j-1)*3+1, (j-1)*3+2,...
+        (j-1)*3+3];
+end
+for k = 1:length(node_to_remove)
+    j = node_to_remove(k);
+    rows_to_remove = [rows_to_remove, (j-1)*3+1, (j-1)*3+2,...
+        (j-1)*3+3];
 end
 
 % Compute the marginalized Information matrix with Schur Complement
-I_aa = I_t(1:3*n_keep_t, 1:3*n_keep_t);
-I_bb = I_t(3*n_keep_t+1:3*n_mb, 3*n_keep_t+1:3*n_mb);
-I_ab = I_t(1:3*n_keep_t,3*n_keep_t+1:3*n_mb);
+I_aa = I_t(rows_to_keep, rows_to_keep);
+I_bb = I_t(rows_to_remove, rows_to_remove);
+I_ab = I_t(rows_to_keep, rows_to_remove);
 
 I_marg = I_aa - I_ab * pinv(I_bb) * I_ab';
 
@@ -101,7 +79,6 @@ n = length(nodes_to_keep_t);
 map_pair_MI = [];
 
 % compute every mutual information pair
-% we work in the order [keep, remove]
 for k=length(nodes_to_keep_t):-1:1
     for j=1:k-1
         map_pair_MI= [map_pair_MI; [j k computeMutualInfo(I_marg, j, k)]];
@@ -128,12 +105,16 @@ end
 
 %% Factor recovery in closed form
 
-% First let's compute the covariance matrix
-Sigma = inv(I_marg);
+% We use the rank revealing decomposition from Mazuran et al. 
+[U, D] = eig(I_marg);
+non_zero_columns = real(diag(D)) > 1e-5;
+D = D(non_zero_columns, non_zero_columns);
+U = U(:, non_zero_columns);
+Sigma = inv(D);
 
 % We build Omega and J and retrieve measurements
-J = zeros(size(I_marg));
-Omega = zeros(size(I_marg));
+J = zeros(size(Sigma));
+Omega = zeros(size(Sigma));
 z = zeros(3, length(edges_in_tree));
 
 for k = 1:length(edges_in_tree)
@@ -143,12 +124,12 @@ for k = 1:length(edges_in_tree)
     j = node_pair(2);
 
     % Retrieve node estimates
-    meas_i = nodeEstimates(updated_toy_pg, map_index_t(i));
+    meas_i = nodeEstimates(updated_toy_pg, nodes_to_keep_t(i));
     ti = meas_i(1:2)';
     Ri = [cos(meas_i(3)) -sin(meas_i(3));
         sin(meas_i(3)) cos(meas_i(3))];
 
-    meas_j = nodeEstimates(updated_toy_pg, map_index_t(j));
+    meas_j = nodeEstimates(updated_toy_pg, nodes_to_keep_t(j));
     tj = meas_j(1:2)';
     Rj = [cos(meas_j(3)) -sin(meas_j(3));
         sin(meas_j(3)) cos(meas_j(3))];
@@ -165,6 +146,7 @@ for k = 1:length(edges_in_tree)
     J_k(:, (i-1)*3+1:i*3) = -[Rj'*Ri Rperp*Rj'*(ti-tj);
                                     0 0 1];
     J_k(:, (j-1)*3+1:j*3) = eye(3,3);
+    J_k = J_k * U;
 
     Omega_k = inv(J_k * Sigma * J_k');
 
@@ -172,17 +154,6 @@ for k = 1:length(edges_in_tree)
     J((k-1)*3+1:k*3, :) = J_k;
 
 end 
-
-% We need to add an absolute pose factor so that J is invertible and we can
-% use the closed form solution
-
-J_k = zeros(3, length(I_marg));
-J_k(1:3, 1:3) = eye(3,3);
-k = 3;
-
-Omega_k = inv(J_k * Sigma * J_k');
-Omega((k-1)*3+1:k*3, (k-1)*3+1:k*3) = Omega_k;
-J((k-1)*3+1:k*3, :) = J_k;
 
 % Now we can compute the information matrix of the sparsified elimination
 % clique
@@ -193,6 +164,11 @@ I_spars = J' * Omega * J;
 figure;
 imagesc(I_spars > 0);
 title("Sparsified Information matrix on elimination clique");
+
+%% Compute KLD between sparse and dense distribution
+
+prod = I_spars * Sigma;
+D_kl = 0.5 * ( trace(prod) - log(det(prod)) - length(I_spars))
 
 %% Build a new pose graph 
 
@@ -208,8 +184,3 @@ addRelativePose(sparse_pg, [1, 0, 0], measInf, 3, 4);
 figure
 show(sparse_pg,'IDs','off');
 title('sparsified pose graph');
-
-%% Compute KLD between sparse and dense distribution
-
-prod = I_spars * inv(I_marg);
-D_kl = 0.5 * ( trace(prod) - log(det(prod)) - length(I_spars))

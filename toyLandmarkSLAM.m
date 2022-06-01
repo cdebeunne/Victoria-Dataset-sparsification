@@ -23,6 +23,11 @@ addPointLandmark(toy_pg, [-0.5, 0.5], meas_inf_extero, 2, 4);
 addPointLandmark(toy_pg, [0.3536, 0.3536], meas_inf_extero, 2, 5);
 addPointLandmark(toy_pg, [-0.3536, 0.3536], meas_inf_extero, 3, 5);
 
+% TO IMPROVE
+% add a map to the type of node to build an information matrix with
+% different node sizes
+pose_nodes = [1 2 3];
+lmk_nodes = [4 5];
 
 figure
 show(toy_pg,'IDs','off');
@@ -45,54 +50,51 @@ n_mb = length(markov_blanket_remove);
 % compute the information matrix on the elimination clique
 I_t = computeMatInfJac(toy_pg, markov_blanket_remove);
 
-% we need to add a unary factor so that I_t is full rank
-H = zeros(3, 3*n_mb);
-H(1:3, 1:3) = eye(3,3);
-I = 100 * eye(3,3);
-I_t = I_t + H' * I * H;
-
-% build the maps
-map_index_t = containers.Map(1:n_mb, markov_blanket_remove);
-map_node_t = containers.Map(markov_blanket_remove, 1:n_mb);
 
 % select the nodes to keep in the markov blanket
 nodes_to_keep_t = nodes_to_keep(ismember(nodes_to_keep,markov_blanket_remove));
 n_keep_t = length(nodes_to_keep_t);
 
-% reorder of the Information matrix in this way: 
-% [  keep,keep    keep,remove ;
-% [ remove,keep  remove,remove]
-
-for k = 1:n_keep_t
-    % I copy ?
-    i = map_node_t(nodes_to_keep_t(k));
-
-    % exchange rows
-    rows_k = I_t((k-1)*3+1:k*3, :);
-    rows_i = I_t((i-1)*3+1:i*3, :);
-    I_t((k-1)*3+1:k*3, :) = rows_i;
-    I_t((i-1)*3+1:i*3, :) = rows_k;
-
-    % exchange columns
-    cols_k = I_t(:,(k-1)*3+1:k*3);
-    cols_i = I_t(:, (i-1)*3+1:i*3);
-    I_t(:,(k-1)*3+1:k*3) = cols_i;
-    I_t(:, (i-1)*3+1:i*3) = cols_k;
-
-    % update maps
-    map_index_t(k) = i;
-    map_index_t(i) = k;
-    map_node_t(i) = k;
-    map_node_t(k) = i;
+% We select the rows and the columns to keep and to remove
+rows_to_keep = [];
+rows_to_remove = [];
+for k = 1:length(nodes_to_keep_t)
+    j = nodes_to_keep_t(k);
+    rows_to_keep = [rows_to_keep, (j-1)*3+1, (j-1)*3+2,...
+        (j-1)*3+3];
+end
+for k = 1:length(node_to_remove)
+    j = node_to_remove(k);
+    rows_to_remove = [rows_to_remove, (j-1)*3+1, (j-1)*3+2,...
+        (j-1)*3+3];
 end
 
 % Compute the marginalized Information matrix with Schur Complement
-I_aa = I_t(1:3*n_keep_t, 1:3*n_keep_t);
-I_bb = I_t(3*n_keep_t+1:3*n_mb, 3*n_keep_t+1:3*n_mb);
-I_ab = I_t(1:3*n_keep_t,3*n_keep_t+1:3*n_mb);
+I_aa = I_t(rows_to_keep, rows_to_keep);
+I_bb = I_t(rows_to_remove, rows_to_remove);
+I_ab = I_t(rows_to_keep, rows_to_remove);
 
 I_marg = I_aa - I_ab * pinv(I_bb) * I_ab';
 
 % plot it
 imagesc(I_marg > 0);
 title("Marginalized, Dense Information matrix on elimination clique")
+
+%% Select Manually a topology for the new subgraph
+
+%            > l4 <   
+%          /        \  
+%         /          \  
+%    |--x1 --------> x3
+%         \          /
+%          \        /
+%            > l5 < 
+% This is where there is room for research 
+% BEWARE the closed form solution cannot be used with loops!
+
+edges_in_tree = [map_node_t(1) map_node_t(4);
+                 map_node_t(1) map_node_t(5);
+                 map_node_t(3) map_node_t(4);
+                 map_node_t(3) map_node_t(5);
+                 map_node_t(1) map_node_t(3)];
+

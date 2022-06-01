@@ -4,7 +4,6 @@ function Lambda = computeMatInfJac(pg, nodes)
 
 Lambda = zeros(length(nodes)*3, length(nodes)*3);
 node_pairs = edgeNodePairs(pg);
-% H_stacked = zeros(3*length(nodes), 3*length(nodes));
 
 for k = 1:length(node_pairs)
 
@@ -45,7 +44,6 @@ for k = 1:length(node_pairs)
         H(:, (p-1)*3+1:p*3) = -[Rj'*Ri Rperp*Rj'*(ti-tj);
                                         0 0 1];
         H(:, (q-1)*3+1:q*3) = eye(3,3);
-        % H_stacked((k-1)*3+1:k*3, :) = H;
     
         Lambda = Lambda + H'*Iij*H;
     end 
