@@ -2,8 +2,12 @@ function Lambda = computeMatInfJac(pg, nodes)
 %   Function that extracts a block information matrix from a pose graph
 % given the set of nodes of interest 
 
-Lambda = zeros(length(nodes)*3, length(nodes)*3);
 node_pairs = edgeNodePairs(pg);
+n_lmk = sum(ismember(pg.LandmarkNodeIDs, nodes));
+n_pose = length(nodes) - n_lmk;
+dim_lambda = n_pose*3 + n_lmk*2;
+
+Lambda = zeros(dim_lambda, dim_lambda);
 
 for k = 1:length(node_pairs)
 
@@ -40,7 +44,7 @@ for k = 1:length(node_pairs)
     
         % Compute 2D jacobians
         % Formula from 2D poseSLAM in GTSAM Dellaert.
-        H = zeros(3, 3*length(nodes));
+        H = zeros(3, dim_lambda);
         H(:, (p-1)*3+1:p*3) = -[Rj'*Ri Rperp*Rj'*(ti-tj);
                                         0 0 1];
         H(:, (q-1)*3+1:q*3) = eye(3,3);
@@ -68,14 +72,17 @@ for k = 1:length(node_pairs)
         p = find(nodes==i);
         q = find(nodes==j);
 
+        % s_q is the index in the information matrix of the landmark
+        s_q = n_pose * 3 + (q-n_pose - 1) * 2 + 1;
+
         % Compute 2D jacobians
         % Formula from debeunne et al that is probably wrong
-        H = zeros(2, 3*length(nodes));
+        H = zeros(2, dim_lambda);
         dz_dtheta = -[-s * x(1) + c * x(2); -c * x(1) - s * x(2)] +...
             [-s * l(1) + c * l(2); -c * l(1) - s * l(2)];
         dz_dx = -R';
         H(:, (p-1)*3+1:p*3) = [dz_dx dz_dtheta];
-        H(:, (q-1)*3+1:q*3-1) = R';
+        H(:, s_q:s_q+1) = R';
         Lambda = Lambda + H'*Iij*H;
     end
 end

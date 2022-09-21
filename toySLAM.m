@@ -39,18 +39,17 @@ markov_blanket_remove = unique(markov_blanket_remove);
 n_mb = length(markov_blanket_remove);
 
 % compute the information matrix on the elimination clique
-I_t = computeMatInfJac(updated_toy_pg, markov_blanket_remove);
-I_t_copy = I_t;
+I_mb = computeMatInfJac(updated_toy_pg, markov_blanket_remove);
 
 % select the nodes to keep in the markov blanket
-nodes_to_keep_t = nodes_to_keep(ismember(nodes_to_keep,markov_blanket_remove));
-n_keep_t = length(nodes_to_keep_t);
+nodes_to_keep_mb = nodes_to_keep(ismember(nodes_to_keep,markov_blanket_remove));
+n_keep_t = length(nodes_to_keep_mb);
 
 % We select the rows and the columns to keep and to remove
 rows_to_keep = [];
 rows_to_remove = [];
-for k = 1:length(nodes_to_keep_t)
-    j = nodes_to_keep_t(k);
+for k = 1:length(nodes_to_keep_mb)
+    j = nodes_to_keep_mb(k);
     rows_to_keep = [rows_to_keep, (j-1)*3+1, (j-1)*3+2,...
         (j-1)*3+3];
 end
@@ -61,25 +60,21 @@ for k = 1:length(node_to_remove)
 end
 
 % Compute the marginalized Information matrix with Schur Complement
-I_aa = I_t(rows_to_keep, rows_to_keep);
-I_bb = I_t(rows_to_remove, rows_to_remove);
-I_ab = I_t(rows_to_keep, rows_to_remove);
+I_aa = I_mb(rows_to_keep, rows_to_keep);
+I_bb = I_mb(rows_to_remove, rows_to_remove);
+I_ab = I_mb(rows_to_keep, rows_to_remove);
 
-I_marg = I_aa - I_ab * pinv(I_bb) * I_ab';
-
-% plot it
-imagesc(I_marg > 1e-3);
-title("Marginalized, Dense Information matrix on elimination clique")
+I_marg = I_aa - I_ab * inv(I_bb) * I_ab';
 
 %% Compute Chow Liu Tree
 
-n = length(nodes_to_keep_t);
+n = length(nodes_to_keep_mb);
 
 % an array with each row like [i, j, MI(x_i, x_j)]
 map_pair_MI = [];
 
 % compute every mutual information pair
-for k=length(nodes_to_keep_t):-1:1
+for k=length(nodes_to_keep_mb):-1:1
     for j=1:k-1
         map_pair_MI= [map_pair_MI; [j k computeMutualInfo(I_marg, j, k)]];
     end
@@ -113,8 +108,8 @@ U = U(:, non_zero_columns);
 Sigma = inv(D);
 
 % We build Omega and J and retrieve measurements
-J = zeros(size(Sigma));
-Omega = zeros(size(Sigma));
+J = zeros(3*size(edges_in_tree, 2), length(I_marg));
+Omega = zeros(3*size(edges_in_tree, 2), 3*size(edges_in_tree, 2));
 z = zeros(3, length(edges_in_tree));
 
 for k = 1:length(edges_in_tree)
@@ -124,12 +119,12 @@ for k = 1:length(edges_in_tree)
     j = node_pair(2);
 
     % Retrieve node estimates
-    meas_i = nodeEstimates(updated_toy_pg, nodes_to_keep_t(i));
+    meas_i = nodeEstimates(updated_toy_pg, nodes_to_keep_mb(i));
     ti = meas_i(1:2)';
     Ri = [cos(meas_i(3)) -sin(meas_i(3));
         sin(meas_i(3)) cos(meas_i(3))];
 
-    meas_j = nodeEstimates(updated_toy_pg, nodes_to_keep_t(j));
+    meas_j = nodeEstimates(updated_toy_pg, nodes_to_keep_mb(j));
     tj = meas_j(1:2)';
     Rj = [cos(meas_j(3)) -sin(meas_j(3));
         sin(meas_j(3)) cos(meas_j(3))];
@@ -146,24 +141,39 @@ for k = 1:length(edges_in_tree)
     J_k(:, (i-1)*3+1:i*3) = -[Rj'*Ri Rperp*Rj'*(ti-tj);
                                     0 0 1];
     J_k(:, (j-1)*3+1:j*3) = eye(3,3);
-    J_k = J_k * U;
 
-    Omega_k = inv(J_k * Sigma * J_k');
 
-    Omega((k-1)*3+1:k*3, (k-1)*3+1:k*3) = Omega_k;
     J((k-1)*3+1:k*3, :) = J_k;
 
 end 
+
+J = J * U;
+
+for k = 1:length(edges_in_tree)
+    inter = J * Sigma * J';
+    Omega_k = inv(inter((k-1)*3+1:k*3, (k-1)*3+1:k*3));
+    Omega((k-1)*3+1:k*3, (k-1)*3+1:k*3) = Omega_k;
+end
+
 
 % Now we can compute the information matrix of the sparsified elimination
 % clique
 
 I_spars = J' * Omega * J;
+I_spars = U * I_spars * U';
 
 % plot it
 figure;
-imagesc(I_spars > 0);
+clims = [-6, 6];
+
+subplot 121;
+imagesc(log(abs(I_marg)), clims);
+title("Marginalized, Dense Information matrix on elimination clique")
+
+subplot 122;
+imagesc(log(abs(I_spars)), clims);
 title("Sparsified Information matrix on elimination clique");
+
 
 %% Compute KLD between sparse and dense distribution
 
