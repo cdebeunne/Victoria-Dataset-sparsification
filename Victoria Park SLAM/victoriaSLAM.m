@@ -45,7 +45,7 @@ count_lmk = 0;
 poses2D{count_pose} = pose2DNode(current_pose, count_pose, 1);
 
 
-for count = 1 : 5000
+for count = 1 : 2500
     % Handle controller input
     controller_input = controllerInput(count, :);
     
@@ -68,7 +68,7 @@ for count = 1 : 5000
         disp(current_pose)
 
         % Update graph & pose cell
-        addRelativePose(victoria_pg, SE2ToPose(M), mat_to_vec(info_mat_last));
+        addRelativePose(victoria_pg, SE2ToPose(M), mat_to_vec(info_mat));
         count_pose = count_pose + 1;
         current_node = victoria_pg.NumNodes;
 
