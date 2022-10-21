@@ -177,7 +177,7 @@ title("Sparsified Information matrix on elimination clique");
 
 %% Compute KLD between sparse and dense distribution
 
-prod = I_spars * Sigma;
+prod = U' * I_spars * U * Sigma ;
 D_kl = 0.5 * ( trace(prod) - log(det(prod)) - length(I_spars))
 
 %% Build a new pose graph 

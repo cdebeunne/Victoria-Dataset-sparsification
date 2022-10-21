@@ -5,6 +5,7 @@ load("victoriaParkDataset.mat","controllerInput", ...
 
 poses2D = {};
 lmks = {};
+SLAMInputs = {};
 
 %%  Set up parameters
 initial_state = [gpsLatLong(1,2) gpsLatLong(1,1) deg2rad(37)]';
@@ -20,6 +21,7 @@ L = 2.83;                % [m]
 sigma_range = 1;            % [m]
 sigma_bearing = deg2rad(3); % [rad]
 meas_covar = [sigma_range^2 0; 0 sigma_bearing^2];
+meas_info = inv(meas_covar);
 
 max_sensor_range = 30; % [m]
 
@@ -45,12 +47,15 @@ count_lmk = 0;
 poses2D{count_pose} = pose2DNode(current_pose, count_pose, 1);
 
 
-for count = 1 : 2500
+for count = 1 : 5000
     % Handle controller input
     controller_input = controllerInput(count, :);
-    
+
     % turn into relative pose
     [relative_pose, info_mat] = carInputFactor(controller_input, L, timestep, process_noise);
+
+    % Update measurement array
+    SLAMInputs{length(SLAMInputs) + 1} = VictoriaSLAMInput(count, "odometry", 0, relative_pose, info_mat);
 
     % update odometry integration
     M = M * poseToSE2(relative_pose);
@@ -123,6 +128,10 @@ for count = 1 : 2500
                 lmk_factor = FactorLmk(l_obs, I_obs, count_pose, count_lmk);       
                 poses2D{count_pose} = matchLandmark(poses2D{count_pose}, count_lmk,lmk_factor);
 
+                % Update measurement array
+                % SLAMInputs{length(SLAMInputs) + 1} = VictoriaSLAMInput(count, "landmark", count_lmk, l_obs, I_obs);
+                SLAMInputs{length(SLAMInputs) + 1} = VictoriaSLAMInput(count, "landmark", count_lmk, observed_landmarks(i, :), meas_info);
+
             % Is it a match ? 
             elseif (min_dist < landmark_rejection_thres)
                 addPointLandmark(victoria_pg, l_obs, I_obs_vec, current_node, lmks{min_id}.id_graph);
@@ -131,7 +140,12 @@ for count = 1 : 2500
                 lmk_factor = FactorLmk(l_obs, I_obs, count_pose, count_lmk);
                 poses2D{count_pose} = matchLandmark(poses2D{count_pose}, min_id, lmk_factor);
 
+                % Update measurement array
+                % SLAMInputs{length(SLAMInputs) + 1} = VictoriaSLAMInput(count, "landmark",min_id, l_obs, I_obs);
+                SLAMInputs{length(SLAMInputs) + 1} = VictoriaSLAMInput(count, "landmark", min_id, observed_landmarks(i, :), meas_info);
+
             end
+
 
         end
         if mod(count, optimize_step) == 0
@@ -147,6 +161,15 @@ for count = 1 : 2500
         current_pose = last_pose;
     end
 end
+
+% Write in txt file
+fid=fopen('MyFile.txt','w');
+for k=1:length(SLAMInputs)
+    fprintf(fid, writeInput(SLAMInputs{k}) + '\n');
+end
+fclose(fid);
+
+
 figure
 show(victoria_pg,'IDs','off');
 title('victoria graph');
