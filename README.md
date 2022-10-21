@@ -17,7 +17,16 @@ From this, two alternative datasets are proposed with data association using ids
 
 ` measurement id, landmark, id, dx, dy, I(1,1) , I(2,2)`
 
+`.mat` files are also available to load them easily with matlab. A simple example graph optimization with this dataset is 
+provided in `datasetWrapper.mat`.
 The dataset represents the following graph after optimization:
 
 ![](victoria_traj.jpg)
                          
+## Marginalization & sparsification 
+
+The other files implement simple applications of node marginalization and factor recovery as described in 
+*Nonlinear Factor Recovery for Long-Term SLAM* by Mazuran et al
+
+
+![](sparsification.jpg)

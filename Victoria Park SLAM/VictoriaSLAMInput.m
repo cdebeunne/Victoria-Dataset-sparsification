@@ -27,8 +27,8 @@ classdef VictoriaSLAMInput
                     obj.info_vec(1) + " , " + obj.info_vec(2) + " , " + obj.info_vec(3));
             elseif (obj.type == "odometry")
                 str = (obj.idx + " , " + obj.type + " , " +  ...
-                    obj.measurement(1) + " , " + obj.measurement(2) + " , "  +...
-                    obj.info_vec(1) + " , " + obj.info_vec(2) + " , " + obj.info_vec(3));
+                    obj.measurement(1) + " , " + obj.measurement(2) + " , "  + obj.measurement(3) + " , " + ...
+                    obj.info_vec(1) + " , " + obj.info_vec(4) + " , " + obj.info_vec(6));
             end
         end
   
