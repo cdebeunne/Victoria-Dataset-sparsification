@@ -27,7 +27,7 @@ max_sensor_range = 30; % [m]
 
 timestep = 0.025; % [sec]
 
-landmark_rejection_thres = 3;  % maximum distance for association
+landmark_rejection_thres = 2;  % maximum distance for association
 landmark_augmentation_thres = 12; % minimum distance for creation of new landmark
 validation_gate = [landmark_rejection_thres landmark_augmentation_thres];
 
@@ -47,7 +47,7 @@ count_lmk = 0;
 poses2D{count_pose} = pose2DNode(current_pose, count_pose, 1);
 
 
-for count = 1 : 5000
+for count = 1 : 30000
     % Handle controller input
     controller_input = controllerInput(count, :);
 
@@ -129,8 +129,8 @@ for count = 1 : 5000
                 poses2D{count_pose} = matchLandmark(poses2D{count_pose}, count_lmk,lmk_factor);
 
                 % Update measurement array
-                % SLAMInputs{length(SLAMInputs) + 1} = VictoriaSLAMInput(count, "landmark", count_lmk, l_obs, I_obs);
-                SLAMInputs{length(SLAMInputs) + 1} = VictoriaSLAMInput(count, "landmark", count_lmk, observed_landmarks(i, :), meas_info);
+                SLAMInputs{length(SLAMInputs) + 1} = VictoriaSLAMInput(count, "landmark", count_lmk, l_obs, I_obs);
+                % SLAMInputs{length(SLAMInputs) + 1} = VictoriaSLAMInput(count, "landmark", count_lmk, observed_landmarks(i, :), meas_info);
 
             % Is it a match ? 
             elseif (min_dist < landmark_rejection_thres)
@@ -141,8 +141,8 @@ for count = 1 : 5000
                 poses2D{count_pose} = matchLandmark(poses2D{count_pose}, min_id, lmk_factor);
 
                 % Update measurement array
-                % SLAMInputs{length(SLAMInputs) + 1} = VictoriaSLAMInput(count, "landmark",min_id, l_obs, I_obs);
-                SLAMInputs{length(SLAMInputs) + 1} = VictoriaSLAMInput(count, "landmark", min_id, observed_landmarks(i, :), meas_info);
+                SLAMInputs{length(SLAMInputs) + 1} = VictoriaSLAMInput(count, "landmark",min_id, l_obs, I_obs);
+                % SLAMInputs{length(SLAMInputs) + 1} = VictoriaSLAMInput(count, "landmark", min_id, observed_landmarks(i, :), meas_info);
 
             end
 
