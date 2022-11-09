@@ -78,7 +78,7 @@ for k = 1:length(node_pairs)
         % Compute 2D jacobians
         % Formula from debeunne et al that is probably wrong
         H = zeros(2, dim_lambda);
-        dz_dtheta = -[-s * x(1) + c * x(2); -c * x(1) - s * x(2)] +...
+        dz_dtheta = [s * x(1) - c * x(2); c * x(1) + s * x(2)] +...
             [-s * l(1) + c * l(2); -c * l(1) - s * l(2)];
         dz_dx = -R';
         H(:, (p-1)*3+1:p*3) = [dz_dx dz_dtheta];
