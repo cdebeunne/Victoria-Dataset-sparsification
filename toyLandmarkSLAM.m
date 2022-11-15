@@ -51,4 +51,15 @@ I = J_0_0_aug' * C * J_0_0_aug + J_0_1_aug' * C * J_0_1_aug +...
     J_0_2_aug' * C * J_0_2_aug + J_1_1_aug' * C * J_1_1_aug +...
     J_1_2_aug' * C * J_1_2_aug;
 
+% We remove x0 and l0
+idx_to_remove = [1:3, 7:8];
+
+% We keep x1, l1 and l2
+idx_to_keep = [4:6, 9:12];
+
+I_rr = I(idx_to_remove, idx_to_remove);
+I_kk = I(idx_to_keep, idx_to_keep);
+I_kr = I(idx_to_keep, idx_to_remove);
+
+I_marg = I_kk + I_kr * inv(I_rr) * I_kr'
 
